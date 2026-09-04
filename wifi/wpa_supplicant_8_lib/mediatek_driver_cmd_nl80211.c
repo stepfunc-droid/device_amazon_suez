@@ -43,10 +43,8 @@ static void wpa_driver_send_hang_msg(struct wpa_driver_nl80211_data *drv)
     drv_errors++;
     if (drv_errors > DRV_NUMBER_SEQUENTIAL_ERRORS) {
         drv_errors = 0;
-        /* avoid the framework to handle  HANGED */
-        /*
-	 * wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "HANGED");
-	 */
+        /* Re-enable framework recovery after repeated private-command failures. */
+        wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "HANGED");
     }
 }
 
@@ -1924,8 +1922,13 @@ int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
         params.hdr.index = params.hdr.index | (0x01 << 24);
         params.hdr.buflen = sizeof(params);
         params.suspend = *(cmd+15)-'0';
-        wpa_driver_nl80211_testmode(priv, (u8* )&params, sizeof(params));
-        handled = 0; /* 6630 driver handled this command in driver, so give a chance to 6630 driver */
+        ret = wpa_driver_nl80211_testmode(priv, (u8* )&params, sizeof(params));
+        if (ret < 0) {
+            /* Only fall back to the legacy private ioctl if testmode failed.
+             * The old code always sent SETSUSPENDMODE twice. */
+            wpa_printf(MSG_INFO, "SETSUSPENDMODE testmode failed (%d), falling back to private ioctl", ret);
+            handled = 0;
+        }
     }else if(os_strncasecmp(cmd, "mtk_rx_packet_filter ", 21) == 0) {
         char buf[9] = {0}, *errChar = NULL;
         char *pos = NULL;

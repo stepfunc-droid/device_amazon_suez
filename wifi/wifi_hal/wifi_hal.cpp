@@ -1131,7 +1131,10 @@ wifi_error wifi_get_supported_feature_set(wifi_interface_handle handle, feature_
     set |= WIFI_FEATURE_PNO;
 #endif
 
-    set |= WIFI_FEATURE_CONTROL_ROAMING;
+    /* MT6630 kernel does not implement the Android vendor roaming-control
+     * commands used by this HAL. Do not advertise CONTROL_ROAMING to the
+     * Android framework; leave roaming to the legacy driver/framework path. */
+    /* set |= WIFI_FEATURE_CONTROL_ROAMING; */
 
     memcpy(pset, &set, sizeof(feature_set));
 
