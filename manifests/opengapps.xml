@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+    <remote name="opengapps"
+            fetch="https://github.com/opengapps/" />
+    <remote name="opengapps-gitlab"
+            fetch="https://gitlab.opengapps.org/opengapps/" />
+
+    <project path="vendor/opengapps/build"
+             name="aosp_build"
+             revision="master"
+             remote="opengapps" />
+
+    <project path="vendor/opengapps/sources/all"
+             name="all"
+             revision="master"
+             remote="opengapps-gitlab"
+             clone-depth="1" />
+
+    <!-- arm64 OpenGApps also depends on the 32-bit ARM package sources. -->
+    <project path="vendor/opengapps/sources/arm"
+             name="arm"
+             revision="master"
+             remote="opengapps-gitlab"
+             clone-depth="1" />
+
+    <project path="vendor/opengapps/sources/arm64"
+             name="arm64"
+             revision="master"
+             remote="opengapps-gitlab"
+             clone-depth="1" />
+</manifest>
