@@ -25,10 +25,16 @@ repo sync vendor/opengapps/build \
 
 if command -v git-lfs >/dev/null 2>&1; then
     git lfs install
-    repo forall vendor/opengapps -c 'git lfs pull'
+    for dir in \
+        vendor/opengapps/build \
+        vendor/opengapps/sources/all \
+        vendor/opengapps/sources/arm \
+        vendor/opengapps/sources/arm64; do
+        echo "Pulling Git LFS objects in $dir..."
+        git -C "$ROOT/$dir" lfs pull
+    done
 else
-    echo "WARNING: git-lfs is not installed. Install it, then run:"
-    echo "  cd $ROOT && git lfs install && repo forall vendor/opengapps -c 'git lfs pull'"
+    echo "WARNING: git-lfs is not installed. Install it, then run this script again."
 fi
 
 echo "OpenGApps sources are ready. lineage_suez builds use GAPPS_VARIANT=pico."
