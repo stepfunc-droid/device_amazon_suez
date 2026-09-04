@@ -178,22 +178,7 @@ $(call inherit-product-if-exists, frameworks/native/build/phone-xxhdpi-2048-hwui
 # Get non-open-source specific aspects
 $(call inherit-product-if-exists, $(VENDOR)/suez-vendor.mk)
 
-# Keep the system image lean. Suez is Wi-Fi only, and these apps are either
-# replaceable from Play Store or unnecessary for this build.
-SUEZ_REMOVE_PACKAGES := \
-    AudioFX \
-    Backgrounds \
-    Contacts \
-    DeskClock \
-    Email \
-    Eleven \
-    Gallery2 \
-    LatinIME \
-    LineageSetupWizard \
-    Recorder \
-    Telecom \
-    TeleService \
-    Traceur \
-    Updater
-
-PRODUCT_PACKAGES := $(filter-out $(SUEZ_REMOVE_PACKAGES),$(PRODUCT_PACKAGES))
+# Keep the system image lean. This uninstallable package overrides default
+# Lineage/AOSP applications that are unnecessary on this Wi-Fi-only tablet.
+PRODUCT_PACKAGES += \
+    SuezRemovePackages
