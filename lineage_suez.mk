@@ -14,6 +14,11 @@
 # limitations under the License.
 #
 
+# Build the minimal Google Apps set directly into the ROM.
+# The OpenGApps source trees are installed by setup-opengapps.sh.
+GAPPS_VARIANT := pico
+$(call inherit-product, vendor/opengapps/build/opengapps-packages.mk)
+
 # Inherit some common Lineage stuff.
 $(call inherit-product-if-exists, vendor/lineage/config/common_full_tablet_wifionly.mk)
 
