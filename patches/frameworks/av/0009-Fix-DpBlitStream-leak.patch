@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: stepfunc-droid <stepfunc-droid@users.noreply.github.com>
+Date: Fri, 4 Sep 2026 00:00:00 +0800
+Subject: [PATCH] frameworks/av: free DpBlitStream after color conversion
+
+The MTK YUV color-conversion path allocates a DpBlitStream for every
+conversion but never destroys it. DpBlitStream owns internal stream,
+channel and buffer-pool state, so leaking the object can accumulate
+resources across repeated thumbnail/frame extraction operations.
+
+Destroy the stream after invalidate() and before returning.
+---
+ media/libstagefright/colorconversion/ColorConverter.cpp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/media/libstagefright/colorconversion/ColorConverter.cpp b/media/libstagefright/colorconversion/ColorConverter.cpp
+--- a/media/libstagefright/colorconversion/ColorConverter.cpp
++++ b/media/libstagefright/colorconversion/ColorConverter.cpp
+@@ -1143,6 +1143,8 @@ status_t ColorConverter::convertYUVToRGBHW(const BitmapParams &src, const Bitmap
+         dumpColorConverterData(name_rgb,dst.mBits, dst.mWidth*dst.mHeight*4, retriever_propty_rgb);
+     }
+ 
++    delete blitStream;
++
+     if(!bRet)
+         return OK;
+     else
+-- 
+2.39.5
