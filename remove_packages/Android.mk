@@ -12,7 +12,6 @@ LOCAL_OVERRIDES_PACKAGES := \
     Email \
     Eleven \
     Gallery2 \
-    LatinIME \
     LineageSetupWizard \
     Recorder \
     Telecom \
