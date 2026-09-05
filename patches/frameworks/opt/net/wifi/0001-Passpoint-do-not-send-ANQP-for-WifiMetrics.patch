@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: stepfunc-droid <stepfunc-droid@users.noreply.github.com>
+Date: Sat, 5 Sep 2026 14:00:00 +0800
+Subject: [PATCH] wifi: do not send ANQP requests for metrics
+
+WifiMetrics counts Passpoint-capable APs after full-band scans. On the
+Android 9 Wi-Fi stack this calls PasspointManager.matchProvider(), which
+can initiate a real ANQP/GAS request on an ANQP cache miss even when no
+Passpoint provider is configured.
+
+On suez, these otherwise unnecessary requests can force the legacy
+MT6630 driver through an off-channel remain-on-channel operation while
+associated. This has been observed to coincide with the connected radio
+losing its usable data path and RSSI dropping to zero.
+
+Backport the upstream fix from commit
+e35f422b08d89395a1f011353c707174b9bb53e0: allow provider matching to
+forbid new ANQP requests and use that mode for metrics collection. Normal
+Passpoint matching keeps the existing behavior.
+
+Upstream-Bug: 141624212
+Upstream-Commit: e35f422b08d89395a1f011353c707174b9bb53e0
+---
+ service/java/com/android/server/wifi/WifiMetrics.java       |  3 ++-
+ .../android/server/wifi/hotspot2/PasspointManager.java      | 27 +++++++++++++++++++++++----
+ 2 files changed, 25 insertions(+), 5 deletions(-)
+
+diff --git a/service/java/com/android/server/wifi/WifiMetrics.java b/service/java/com/android/server/wifi/WifiMetrics.java
+--- a/service/java/com/android/server/wifi/WifiMetrics.java
++++ b/service/java/com/android/server/wifi/WifiMetrics.java
+@@ -1655,7 +1655,8 @@ public class WifiMetrics {
+                 Pair<PasspointProvider, PasspointMatch> providerMatch = null;
+                 PasspointProvider passpointProvider = null;
+                 if (networkDetail.isInterworking()) {
+-                    providerMatch =
+-                            mPasspointManager.matchProvider(scanResult);
++                    // Metrics collection must not trigger new ANQP/GAS exchanges.
++                    providerMatch =
++                            mPasspointManager.matchProvider(scanResult, false);
+                     passpointProvider = providerMatch != null ? providerMatch.first : null;
+ 
+                     if (networkDetail.getHSRelease() == NetworkDetail.HSRelease.R1) {
+diff --git a/service/java/com/android/server/wifi/hotspot2/PasspointManager.java b/service/java/com/android/server/wifi/hotspot2/PasspointManager.java
+--- a/service/java/com/android/server/wifi/hotspot2/PasspointManager.java
++++ b/service/java/com/android/server/wifi/hotspot2/PasspointManager.java
+@@ -299,8 +299,20 @@ public class PasspointManager {
+      * @return A pair of {@link PasspointProvider} and match status.
+      */
+     public Pair<PasspointProvider, PasspointMatch> matchProvider(ScanResult scanResult) {
++        return matchProvider(scanResult, true);
++    }
++
++    /**
++     * Find the best provider that can provide service through the given AP.
++     *
++     * @param scanResult The scan result associated with the AP
++     * @param anqpRequestAllowed Whether a cache miss may initiate a new ANQP request
++     * @return A pair of {@link PasspointProvider} and match status.
++     */
++    public Pair<PasspointProvider, PasspointMatch> matchProvider(
++            ScanResult scanResult, boolean anqpRequestAllowed) {
+         List<Pair<PasspointProvider, PasspointMatch>> allMatches = getAllMatchedProviders(
+-                scanResult);
++                scanResult, anqpRequestAllowed);
+         if (allMatches == null) {
+             return null;
+         }
+@@ -335,8 +347,17 @@ public class PasspointManager {
+      */
+     public List<Pair<PasspointProvider, PasspointMatch>> getAllMatchedProviders(
+             ScanResult scanResult) {
++        return getAllMatchedProviders(scanResult, true);
++    }
++
++    /**
++     * Return provider matches while optionally suppressing new ANQP requests.
++     */
++    private List<Pair<PasspointProvider, PasspointMatch>> getAllMatchedProviders(
++            ScanResult scanResult, boolean anqpRequestAllowed) {
+         List<Pair<PasspointProvider, PasspointMatch>> allMatches = new ArrayList<>();
+ 
+         // Retrieve the relevant information elements, mainly Roaming Consortium IE and Hotspot 2.0
+@@ -359,9 +380,11 @@ public class PasspointManager {
+         ANQPData anqpEntry = mAnqpCache.getEntry(anqpKey);
+ 
+         if (anqpEntry == null) {
+-            mAnqpRequestManager.requestANQPElements(bssid, anqpKey,
+-                    roamingConsortium.anqpOICount > 0,
+-                    vsa.hsRelease  == NetworkDetail.HSRelease.R2);
++            if (anqpRequestAllowed) {
++                mAnqpRequestManager.requestANQPElements(bssid, anqpKey,
++                        roamingConsortium.anqpOICount > 0,
++                        vsa.hsRelease  == NetworkDetail.HSRelease.R2);
++            }
+             Log.d(TAG, "ANQP entry not found for: " + anqpKey);
+             return allMatches;
+         }
+-- 
+2.39.5
