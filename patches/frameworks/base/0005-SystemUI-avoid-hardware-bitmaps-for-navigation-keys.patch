@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: stepfunc-droid <stepfunc-droid@users.noreply.github.com>
+Date: Fri, 4 Sep 2026 23:00:00 +0800
+Subject: [PATCH] SystemUI: avoid hardware bitmaps for navigation keys
+
+MT8173's PowerVR userspace stack has incomplete hardware-bitmap support.
+The three-button navigation bar renders its key icons through
+ShadowKeyDrawable, which builds an ARGB_8888 cache and then converts it
+to Bitmap.Config.HARDWARE. On suez that conversion can produce visibly
+corrupted navigation icons while the rest of the navigation bar remains
+intact, and the corruption is also present in screenshots.
+
+Keep the cached bitmap in ARGB_8888 instead. ShadowKeyDrawable still
+caches the rendered icon, so this does not force per-frame regeneration;
+HWUI can upload the software-backed bitmap through the normal texture
+path when drawing it.
+---
+ .../systemui/statusbar/phone/ShadowKeyDrawable.java       | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/ShadowKeyDrawable.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/ShadowKeyDrawable.java
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/ShadowKeyDrawable.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/ShadowKeyDrawable.java
+@@ -150,7 +150,6 @@ public class ShadowKeyDrawable extends Drawable {
+             d.draw(canvas);
+         }
+ 
+-        bitmap = bitmap.copy(Bitmap.Config.HARDWARE, false);
+         mState.mLastDrawnBitmap = bitmap;
+         canvas.restore();
+     }
+-- 
+2.39.5
