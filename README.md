@@ -20,3 +20,8 @@ Back Camera  | 2 MP
 Front Camera | 0,3 MP
 
 ![suez](https://www.moviles.com/fotos/amazon-fire-hd-10-2017-60332-g.jpeg "suez")
+
+Build / flashing notes
+----------------------
+
+See [BUILD_NOTES.md](BUILD_NOTES.md) for the current LineageOS 16 build procedure, device-specific patch notes, system-app pruning, OpenGApps Pico guidance, and known build pitfalls.
