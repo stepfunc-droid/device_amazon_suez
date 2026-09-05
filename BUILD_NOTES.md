@@ -342,7 +342,7 @@ vendor/lib/libwvhidl.so
 vendor/lib64/libwvhidl.so
   31528465d11853cb67f22b9161d7885823af449e
 vendor/lib/mediadrm/libwvdrmengine.so
-  5a328e3a22803a1ea3379c9d325d0f2877d459
+  5a328e3a228c7ba6da032af829e4775352c84545
 vendor/lib64/mediadrm/libwvdrmengine.so
   f7f4f34213df3d57dbb7b726048b1ab244bb61f7
 ```
@@ -350,7 +350,7 @@ vendor/lib64/mediadrm/libwvdrmengine.so
 A third-party vendor repository contained five matching files, but its **32-bit** `vendor/lib/mediadrm/libwvdrmengine.so` did not match. The correct 32-bit file was recovered from a working suez ROM and matched:
 
 ```text
-5a328e3a22803a1ea3379c9d325d0f2877d459
+5a328e3a228c7ba6da032af829e4775352c84545
 ```
 
 If the build fails with a missing Widevine service such as:
@@ -570,13 +570,11 @@ Device-specific source patches live under:
 device/amazon/suez/patches/
 ```
 
-and the repository provides:
+and are applied by:
 
 ```bash
 device/amazon/suez/patches/apply.sh
 ```
-
-**Important:** patches in the device tree are not automatically applied merely because they exist under `device/amazon/suez/patches/`. The Android build does not consume these patch files. They must already be present in the corresponding checked-out source repositories before building.
 
 `apply.sh` changes into each target repository before running `git apply`. For example, patches under:
 
@@ -586,125 +584,17 @@ patches/frameworks/base/
 
 are applied with `frameworks/base` as the current working directory.
 
-### Important: do not blindly re-run `apply.sh`
+### Important: do not blindly re-run patches
 
-`git apply` is not idempotent. A source tree can also be in a mixed state where some patches are already applied and others are not. Running the full script against such a tree will fail part-way through and makes it harder to tell what actually entered the build.
+`git apply` is not idempotent. If the source tree already has the patches applied, running `apply.sh` again will fail or create unnecessary recovery work.
 
-Audit patch state first. `git apply --reverse --check` means the patch is already present; `git apply --check` means it can still be applied cleanly:
-
-```bash
-cd ~/lineage-16.0
-ROOT="$PWD"
-
-while IFS='|' read -r repo patch; do
-    [ -z "$repo" ] && continue
-    full="$ROOT/device/amazon/suez/patches/$patch"
-
-    if git -C "$repo" apply --reverse --check "$full" >/dev/null 2>&1; then
-        printf "APPLIED      %s\n" "$patch"
-    elif git -C "$repo" apply --check "$full" >/dev/null 2>&1; then
-        printf "NOT_APPLIED  %s\n" "$patch"
-    else
-        printf "CONFLICT     %s\n" "$patch"
-    fi
-done <<'EOF'
-bionic|bionic/0001-pthread-patch.patch
-frameworks/av|frameworks/av/0001-Disable-vndk-for-omx.patch
-frameworks/av|frameworks/av/0002-mediatek-Port-AV-changes.patch
-frameworks/av|frameworks/av/0004-Add-support-of-YUV-color-profiles.patch
-frameworks/av|frameworks/av/0006-MTK-Omx-video-decoder-crop-info.patch
-frameworks/av|frameworks/av/0009-Fix-DpBlitStream-leak.patch
-frameworks/base|frameworks/base/0001-Hardware-bitmaps-support-workaround.patch
-frameworks/base|frameworks/base/0002-zygote-Add-ged-to-whitelisted-paths.patch
-frameworks/base|frameworks/base/0005-SystemUI-avoid-hardware-bitmaps-for-navigation-keys.patch
-frameworks/native|frameworks/native/0001-Add-support-of-YUV-color-profiles.patch
-hardware/interfaces|hardware/interfaces/0001-HWC2On1Adapter-Fix-fence-leak.patch
-hardware/interfaces|hardware/interfaces/0002-MediaTek-P-hw-interfaces.patch
-system/core|system/core/0001-libsuspend-readd-earlysuspend.patch
-system/core|system/core/0002-liblog-Add-__xlog_buf_printf.patch
-system/core|system/core/0003-libnetutils-add-MTK-bits-in-ifc_utils.c.patch
-vendor/lineage|vendor/lineage/0002-add-bromite-webview-overlay.patch
-EOF
-```
-
-Interpretation:
-
-```text
-APPLIED      patch is already in the actual source tree
-NOT_APPLIED  patch is absent and can be applied cleanly
-CONFLICT     patch is partially present, based on a different source revision, or depends on another patch
-```
-
-For a fresh/reset source tree, apply the required patches once. For an existing tree, apply only the `NOT_APPLIED` patches that are actually required.
-
-### Baseline patches currently considered required/recommended
-
-The following are the important MTK/PowerVR/legacy-blob compatibility patches for this suez build:
-
-```text
-bionic/0001-pthread-patch.patch
-frameworks/av/0001-Disable-vndk-for-omx.patch
-frameworks/av/0002-mediatek-Port-AV-changes.patch
-frameworks/av/0004-Add-support-of-YUV-color-profiles.patch
-frameworks/av/0006-MTK-Omx-video-decoder-crop-info.patch
-frameworks/av/0009-Fix-DpBlitStream-leak.patch
-frameworks/base/0001-Hardware-bitmaps-support-workaround.patch
-frameworks/base/0002-zygote-Add-ged-to-whitelisted-paths.patch
-frameworks/base/0005-SystemUI-avoid-hardware-bitmaps-for-navigation-keys.patch
-frameworks/native/0001-Add-support-of-YUV-color-profiles.patch
-hardware/interfaces/0001-HWC2On1Adapter-Fix-fence-leak.patch
-hardware/interfaces/0002-MediaTek-P-hw-interfaces.patch
-system/core/0001-libsuspend-readd-earlysuspend.patch
-system/core/0002-liblog-Add-__xlog_buf_printf.patch
-system/core/0003-libnetutils-add-MTK-bits-in-ifc_utils.c.patch
-vendor/lineage/0002-add-bromite-webview-overlay.patch
-```
-
-Do **not** assume every patch in `patches/` belongs in every build. In particular, microG signature-spoofing patches are unnecessary when using OpenGApps, the `netd` patches only alter tethering/conntrack behavior, and `bionic/0002-disable-fstack-protector.patch` weakens stack-protector coverage and should not be added without a concrete compatibility reason.
-
-Patch ordering matters for dependent patches. `frameworks/av/0009-Fix-DpBlitStream-leak.patch` modifies code introduced by `frameworks/av/0004-Add-support-of-YUV-color-profiles.patch`, so apply `0004` before `0009`.
-
-### `libdpframework` must be a Soong module when AV `0004` is applied
-
-`frameworks/av/0004-Add-support-of-YUV-color-profiles.patch` adds `libdpframework` to `shared_libs`. Merely copying `libdpframework.so` into the vendor image is not enough: Soong needs a module named `libdpframework` in the build graph.
-
-If Soong fails with:
-
-```text
-"libstagefright_color_conversion" depends on undefined module "libdpframework"
-```
-
-first verify that both blobs exist:
+Before applying patches to an existing source tree, check the relevant repository first:
 
 ```bash
-ls -l \
-  vendor/amazon/suez/proprietary/vendor/lib/libdpframework.so \
-  vendor/amazon/suez/proprietary/vendor/lib64/libdpframework.so
+git -C frameworks/base status --short
 ```
 
-Then define the vendor prebuilt in `vendor/amazon/suez/Android.bp` if it is not already generated there:
-
-```bp
-cc_prebuilt_library_shared {
-    name: "libdpframework",
-    vendor: true,
-    target: {
-        android_arm: {
-            srcs: ["proprietary/vendor/lib/libdpframework.so"],
-        },
-        android_arm64: {
-            srcs: ["proprietary/vendor/lib64/libdpframework.so"],
-        },
-    },
-    strip: {
-        none: true,
-    },
-}
-```
-
-This is the same pattern used by other legacy MT8173/MTK vendor trees. Do not remove the `libdpframework` dependency just to make Soong pass; it is part of the MTK YUV/color-conversion path added by AV `0004`.
-
-After applying patches across core framework repositories, an `m installclean` is reasonable before the first rebuild. A full source-tree clean is still normally unnecessary.
+For a fresh/reset source tree, apply the patches once. For an already-patched tree, simply keep building unless the patch files themselves changed.
 
 ## PowerVR hardware bitmap fixes
 
