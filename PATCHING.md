@@ -79,6 +79,7 @@ frameworks/base/0001-Hardware-bitmaps-support-workaround.patch
 frameworks/base/0002-zygote-Add-ged-to-whitelisted-paths.patch
 frameworks/base/0005-SystemUI-avoid-hardware-bitmaps-for-navigation-keys.patch
 frameworks/native/0001-Add-support-of-YUV-color-profiles.patch
+frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch
 hardware/interfaces/0001-HWC2On1Adapter-Fix-fence-leak.patch
 hardware/interfaces/0002-MediaTek-P-hw-interfaces.patch
 system/core/0001-libsuspend-readd-earlysuspend.patch
@@ -104,32 +105,181 @@ frameworks/base/0001-Hardware-bitmaps-support-workaround.patch
 frameworks/base/0005-SystemUI-avoid-hardware-bitmaps-for-navigation-keys.patch
 ```
 
-## Wi-Fi ANQP metrics backport
+## Wi-Fi instability: unnecessary ANQP/GAS requests from `WifiMetrics`
 
-`frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch` backports the upstream Android Wi-Fi fix from commit `e35f422b08d89395a1f011353c707174b9bb53e0` (Bug 141624212).
+Patch:
 
-Android 9 `WifiMetrics.incrementAvailableNetworksHistograms()` calls `PasspointManager.matchProvider()` for interworking APs while counting scan statistics. On an ANQP cache miss, the old `matchProvider()` path can initiate a real ANQP/GAS exchange even when no Passpoint provider is configured. On suez this can force the legacy MT6630 driver through an unnecessary off-channel remain-on-channel operation while associated.
+```text
+frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch
+```
 
-The backport adds an `anqpRequestAllowed` path to `PasspointManager` and makes `WifiMetrics` use cached ANQP data only. Normal Passpoint matching keeps the existing request behavior.
+This is a backport of the upstream Android Wi-Fi fix from commit `e35f422b08d89395a1f011353c707174b9bb53e0` (`Bug: 141624212`).
 
-For an existing source tree, apply it explicitly:
+### Symptom on suez
+
+The device could remain visibly associated with Wi-Fi while the actual data path became unusable:
+
+```text
+wlan0 remains UP / LOWER_UP
+Wi-Fi UI still appears connected
+RSSI reported by the MT6630 driver drops to 0
+gateway ping begins timing out
+8.8.8.8 ping also times out
+Android later reports "No internet"
+```
+
+During the failure the MT6630 driver was also observed logging messages such as:
+
+```text
+BAR for a NULL STA_REC, ucStaRecIdx = 255
+nicUpdateLinkQuality: Rssi=0, NewRssi=0
+```
+
+Those messages are useful symptoms of the broken driver/firmware connection state, but they were not the earliest trigger found in the trace.
+
+Power saving was tested separately and is not the primary cause: the same failure occurred while `iw dev wlan0 get power_save` reported `Power save: off`.
+
+### Trigger found in the logs
+
+A working connection on 5 GHz could be followed by an ANQP/GAS query to another AP on a different channel. The MT6630 AIS state machine then entered an off-channel remain-on-channel operation. Shortly afterwards RSSI dropped to zero and the data path stalled.
+
+The important sequence was:
+
+```text
+normal connected traffic on the current AP
+        -> full-band Wi-Fi scan
+        -> ANQP request is initiated for an interworking AP
+        -> GAS query / remain-on-channel on another channel
+        -> MT6630 returns from off-channel operation in a bad connection state
+        -> RSSI becomes 0
+        -> gateway traffic stalls
+        -> Android still temporarily believes the network is connected
+        -> connectivity validation fails / "No internet"
+```
+
+This made the failure look like a random MT6630 driver problem, but the off-channel operation was being triggered unnecessarily by the Android framework.
+
+### Why ANQP happened even though Passpoint was not enabled
+
+The device does **not** advertise Passpoint as a platform feature:
+
+```text
+$ pm list features | grep -Ei "wifi|passpoint"
+feature:android.hardware.wifi
+feature:android.hardware.wifi.direct
+```
+
+There is no `android.hardware.wifi.passpoint` permission XML installed, and `dumpsys wifi` showed zero configured Passpoint providers.
+
+The device Wi-Fi configuration does contain:
+
+```text
+/vendor/etc/wifi/wpa_supplicant.conf:hs20=1
+```
+
+However, `hs20=1` by itself was not the reason for the repeated queries. The Android 9 framework created `PasspointManager` for Wi-Fi metrics even without a declared Passpoint feature.
+
+The problematic Android 9 path was:
+
+```text
+WifiConnectivityManager
+        -> full-band scan results
+        -> WifiMetrics.incrementAvailableNetworksHistograms()
+        -> interworking AP detected
+        -> PasspointManager.matchProvider(scanResult)
+        -> ANQP cache miss
+        -> ANQPRequestManager.requestANQPElements()
+        -> wpa_supplicant GAS/ANQP exchange
+        -> MT6630 off-channel remain-on-channel
+```
+
+So the ANQP request was being sent **for metrics collection**, not because the user had configured or connected to a Passpoint network.
+
+This was confirmed by runtime logs such as:
+
+```text
+HS20: ANQP initiated on <BSSID>
+PasspointManager: ANQP entry not found for: <BSSID>
+wpa_supplicant: ANQP-QUERY-DONE ... result=FAILURE
+ANQPRequestManager: Not allowed to send ANQP request ... for another N seconds
+```
+
+The increasing hold-off time is expected behavior in `ANQPRequestManager` after repeated unanswered/failed requests; it can back off to several minutes. That also explains why the Wi-Fi failure could appear intermittent rather than continuous.
+
+### Upstream fix and local backport
+
+Upstream later fixed this exact class of bug with:
+
+```text
+[Passpoint] Do not initiate ANQP query for metrics update
+```
+
+The fix makes provider matching optionally cache-only. For metrics collection the call becomes conceptually:
+
+```java
+mPasspointManager.matchProvider(scanResult, false);
+```
+
+where `false` means an ANQP cache miss must **not** initiate a new ANQP request.
+
+The suez backport does the same thing:
+
+- `WifiMetrics` may inspect already cached ANQP data;
+- `WifiMetrics` may not start a new ANQP/GAS transaction;
+- normal Passpoint matching keeps its existing behavior and may still request ANQP when appropriate;
+- the MT6630 driver's general remain-on-channel support is not disabled;
+- `hs20=1` is left intact.
+
+This is intentionally narrower and safer than disabling remain-on-channel, Wi-Fi scanning, or all HS2.0 support in the driver.
+
+### Applying only this patch to an existing source tree
+
+Do not re-run the full patch script on a source tree where other patches are already applied.
 
 ```bash
 cd ~/lineage-16.0
 
-git -C frameworks/opt/net/wifi apply --check \
-  "$PWD/device/amazon/suez/patches/frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch"
+PATCH="$PWD/device/amazon/suez/patches/frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch"
 
-git -C frameworks/opt/net/wifi apply \
-  "$PWD/device/amazon/suez/patches/frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch"
+git -C frameworks/opt/net/wifi apply --check "$PATCH"
+git -C frameworks/opt/net/wifi apply "$PATCH"
 ```
 
-Verify it is present with:
+Verify:
 
 ```bash
-git -C frameworks/opt/net/wifi apply --reverse --check \
-  "$PWD/device/amazon/suez/patches/frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch"
+git -C frameworks/opt/net/wifi apply --reverse --check "$PATCH" && \
+  echo "ANQP PATCH APPLIED"
 ```
+
+This patch only changes `frameworks/opt/net/wifi`; an `installclean` is not normally required just for this patch before rebuilding.
+
+### Post-fix validation
+
+After flashing a build containing the patch, clear the old log buffer and use the device normally through multiple Wi-Fi scans:
+
+```bash
+adb logcat -c
+```
+
+Then check for new framework-triggered ANQP/GAS activity:
+
+```bash
+adb logcat -d -b all | grep -Ei \
+'ANQP initiated|GAS-QUERY-START|ANQP-QUERY-DONE|ANQP entry not found|ANQPRequestManager'
+```
+
+`ANQP entry not found` may still appear because the framework can inspect the cache. With no configured Passpoint provider, new metrics-only activity such as the following should no longer be generated:
+
+```text
+HS20: ANQP initiated
+GAS-QUERY-START
+ANQP-QUERY-DONE
+```
+
+The functional regression test is equally important: the old sequence `RSSI -> 0`, gateway packet loss, and `No internet` should no longer recur under normal use.
+
+Initial testing after applying the backport showed the Wi-Fi connection behaving normally with no immediate recurrence of the previous failure. Treat that as an initial validation rather than proof of permanent stability; longer normal-use soak testing is still appropriate.
 
 ## `libdpframework` Soong module
 
