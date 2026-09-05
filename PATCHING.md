@@ -44,6 +44,7 @@ frameworks/base|frameworks/base/0001-Hardware-bitmaps-support-workaround.patch
 frameworks/base|frameworks/base/0002-zygote-Add-ged-to-whitelisted-paths.patch
 frameworks/base|frameworks/base/0005-SystemUI-avoid-hardware-bitmaps-for-navigation-keys.patch
 frameworks/native|frameworks/native/0001-Add-support-of-YUV-color-profiles.patch
+frameworks/opt/net/wifi|frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch
 hardware/interfaces|hardware/interfaces/0001-HWC2On1Adapter-Fix-fence-leak.patch
 hardware/interfaces|hardware/interfaces/0002-MediaTek-P-hw-interfaces.patch
 system/core|system/core/0001-libsuspend-readd-earlysuspend.patch
@@ -101,6 +102,33 @@ The two PowerVR/SystemUI patches are separate fixes and should remain separate:
 ```text
 frameworks/base/0001-Hardware-bitmaps-support-workaround.patch
 frameworks/base/0005-SystemUI-avoid-hardware-bitmaps-for-navigation-keys.patch
+```
+
+## Wi-Fi ANQP metrics backport
+
+`frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch` backports the upstream Android Wi-Fi fix from commit `e35f422b08d89395a1f011353c707174b9bb53e0` (Bug 141624212).
+
+Android 9 `WifiMetrics.incrementAvailableNetworksHistograms()` calls `PasspointManager.matchProvider()` for interworking APs while counting scan statistics. On an ANQP cache miss, the old `matchProvider()` path can initiate a real ANQP/GAS exchange even when no Passpoint provider is configured. On suez this can force the legacy MT6630 driver through an unnecessary off-channel remain-on-channel operation while associated.
+
+The backport adds an `anqpRequestAllowed` path to `PasspointManager` and makes `WifiMetrics` use cached ANQP data only. Normal Passpoint matching keeps the existing request behavior.
+
+For an existing source tree, apply it explicitly:
+
+```bash
+cd ~/lineage-16.0
+
+git -C frameworks/opt/net/wifi apply --check \
+  "$PWD/device/amazon/suez/patches/frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch"
+
+git -C frameworks/opt/net/wifi apply \
+  "$PWD/device/amazon/suez/patches/frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch"
+```
+
+Verify it is present with:
+
+```bash
+git -C frameworks/opt/net/wifi apply --reverse --check \
+  "$PWD/device/amazon/suez/patches/frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch"
 ```
 
 ## `libdpframework` Soong module
