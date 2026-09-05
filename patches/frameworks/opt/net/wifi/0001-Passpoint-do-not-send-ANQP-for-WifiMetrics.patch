@@ -21,14 +21,14 @@ Passpoint matching keeps the existing behavior.
 Upstream-Bug: 141624212
 Upstream-Commit: e35f422b08d89395a1f011353c707174b9bb53e0
 ---
- service/java/com/android/server/wifi/WifiMetrics.java       |  3 ++-
- .../android/server/wifi/hotspot2/PasspointManager.java      | 27 +++++++++++++++++++++++----
- 2 files changed, 25 insertions(+), 5 deletions(-)
+ service/java/com/android/server/wifi/WifiMetrics.java       |  5 +++--
+ .../android/server/wifi/hotspot2/PasspointManager.java      | 30 ++++++++++++++++++++++++++----
+ 2 files changed, 29 insertions(+), 6 deletions(-)
 
 diff --git a/service/java/com/android/server/wifi/WifiMetrics.java b/service/java/com/android/server/wifi/WifiMetrics.java
 --- a/service/java/com/android/server/wifi/WifiMetrics.java
 +++ b/service/java/com/android/server/wifi/WifiMetrics.java
-@@ -1655,7 +1655,8 @@ public class WifiMetrics {
+@@ -1655,8 +1655,9 @@ public class WifiMetrics {
                  Pair<PasspointProvider, PasspointMatch> providerMatch = null;
                  PasspointProvider passpointProvider = null;
                  if (networkDetail.isInterworking()) {
@@ -65,7 +65,7 @@ diff --git a/service/java/com/android/server/wifi/hotspot2/PasspointManager.java
          if (allMatches == null) {
              return null;
          }
-@@ -335,8 +347,17 @@ public class PasspointManager {
+@@ -335,6 +347,14 @@ public class PasspointManager {
       */
      public List<Pair<PasspointProvider, PasspointMatch>> getAllMatchedProviders(
              ScanResult scanResult) {
@@ -80,7 +80,7 @@ diff --git a/service/java/com/android/server/wifi/hotspot2/PasspointManager.java
          List<Pair<PasspointProvider, PasspointMatch>> allMatches = new ArrayList<>();
  
          // Retrieve the relevant information elements, mainly Roaming Consortium IE and Hotspot 2.0
-@@ -359,9 +380,11 @@ public class PasspointManager {
+@@ -359,9 +379,11 @@ public class PasspointManager {
          ANQPData anqpEntry = mAnqpCache.getEntry(anqpKey);
  
          if (anqpEntry == null) {
