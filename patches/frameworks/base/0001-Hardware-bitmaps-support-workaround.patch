@@ -9,22 +9,14 @@ By TRONX2100 and RAWMAIN
 
 Revert: Support Bitmap.copy for hardware bitmaps
 https://github.com/LineageOS/android_frameworks_base/commit/05126d151eb3caa85bd3a039cffb6e37940c3fa4
-
-On suez, SystemUI navigation keys also hit the broken hardware bitmap
-path through ShadowKeyDrawable. Keep that small cached bitmap in
-ARGB_8888 instead of converting it to Bitmap.Config.HARDWARE. This
-prevents corrupted back/home/recents icons while retaining the bitmap
-cache.
-
 Signed-off-by: bilux <i.bilux@gmail.com>
 ---
- core/jni/android/graphics/Bitmap.cpp                              |  4 ++--
- core/jni/android/graphics/BitmapFactory.cpp                       | 35 ++++++++++++++++++++++++++++++++
- graphics/java/android/graphics/Bitmap.java                        |  4 ++--
- libs/hwui/hwui/Bitmap.cpp                                         |  3 +--
- libs/hwui/renderthread/OpenGLPipeline.cpp                          |  6 +++---
- packages/SystemUI/src/com/android/systemui/statusbar/phone/ShadowKeyDrawable.java | 1 -
- 6 files changed, 44 insertions(+), 9 deletions(-)
+ core/jni/android/graphics/Bitmap.cpp        |  4 +--
+ core/jni/android/graphics/BitmapFactory.cpp | 35 +++++++++++++++++++++
+ graphics/java/android/graphics/Bitmap.java  |  4 +--
+ libs/hwui/hwui/Bitmap.cpp                   |  3 +-
+ libs/hwui/renderthread/OpenGLPipeline.cpp   |  6 ++--
+ 5 files changed, 44 insertions(+), 8 deletions(-)
 
 diff --git a/core/jni/android/graphics/Bitmap.cpp b/core/jni/android/graphics/Bitmap.cpp
 index 5a74a2473b32..f6c7ac546bcb 100755
@@ -146,14 +138,3 @@ index f96001ebdd57..ca64a1f3f1e4 100644
          return nullptr;
      }
  
-diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/phone/ShadowKeyDrawable.java b/packages/SystemUI/src/com/android/systemui/statusbar/phone/ShadowKeyDrawable.java
---- a/packages/SystemUI/src/com/android/systemui/statusbar/phone/ShadowKeyDrawable.java
-+++ b/packages/SystemUI/src/com/android/systemui/statusbar/phone/ShadowKeyDrawable.java
-@@ -150,7 +150,6 @@ public class ShadowKeyDrawable extends Drawable {
-             d.draw(canvas);
-         }
- 
--        bitmap = bitmap.copy(Bitmap.Config.HARDWARE, false);
-         mState.mLastDrawnBitmap = bitmap;
-         canvas.restore();
-     }
