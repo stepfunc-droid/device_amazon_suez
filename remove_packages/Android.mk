@@ -3,8 +3,10 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_MODULE := SuezRemovePackages
 LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE_CLASS := APPS
-LOCAL_OVERRIDES_PACKAGES := \
+
+# BUILD_PHONY_PACKAGE has no source file. Record overrides explicitly so the
+# product build filters these packages out without trying to build a dummy APK.
+PACKAGES.$(LOCAL_MODULE).OVERRIDES := \
     AudioFX \
     Backgrounds \
     Contacts \
@@ -18,6 +20,5 @@ LOCAL_OVERRIDES_PACKAGES := \
     TeleService \
     Traceur \
     Updater
-LOCAL_UNINSTALLABLE_MODULE := true
-LOCAL_CERTIFICATE := PRESIGNED
-include $(BUILD_PREBUILT)
+
+include $(BUILD_PHONY_PACKAGE)
