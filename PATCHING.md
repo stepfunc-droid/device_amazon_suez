@@ -8,61 +8,33 @@ The repository provides:
 device/amazon/suez/patches/apply.sh
 ```
 
-That script is intended for a fresh/reset source tree. It changes into each target repository and runs `git apply` on the patches for that repository.
+`apply.sh` now audits each patch before changing the source tree:
 
-## Do not blindly re-run `apply.sh`
+- patches already present are reported as `APPLIED` and left alone;
+- cleanly applicable patches are applied and reported as `NEW`;
+- ambiguous/partially-applied patches stop the script as `CONFLICT` instead of continuing into a mixed state;
+- known optional patches are reported as `OPTIONAL` and are not applied by default.
 
-`git apply` is not idempotent. A source tree can also be in a mixed state where some patches are already applied and others are not. Running the full script against such a tree will fail part-way through and makes it hard to know which patches actually entered the build.
+The default optional set is intentionally conservative:
 
-Audit the patch state first. `git apply --reverse --check` means the patch is already present; `git apply --check` means it can still be applied cleanly.
+```text
+bionic/0002-disable-fstack-protector.patch
+frameworks/base/0003-micro-g-add-enhanced-signature-spoofing.patch
+packages/apps/Settings/0001-micro-g-rebased-signature-spoofing-enablement.patch
+system/netd/0001-Don-t-fail-on-FTP-conntracking-failing.patch
+system/netd/0002-Accept-broken-rpfilter-match.patch
+```
 
-From the LineageOS source root:
+This keeps the normal OpenGApps build from silently enabling microG signature spoofing, unrelated conntrack/rpfilter workarounds, or reduced stack-protector coverage.
+
+Run it from the LineageOS source root:
 
 ```bash
 cd ~/lineage-16.0
-ROOT="$PWD"
-
-while IFS='|' read -r repo patch; do
-    [ -z "$repo" ] && continue
-    full="$ROOT/device/amazon/suez/patches/$patch"
-
-    if git -C "$repo" apply --reverse --check "$full" >/dev/null 2>&1; then
-        printf "APPLIED      %s\n" "$patch"
-    elif git -C "$repo" apply --check "$full" >/dev/null 2>&1; then
-        printf "NOT_APPLIED  %s\n" "$patch"
-    else
-        printf "CONFLICT     %s\n" "$patch"
-    fi
-done <<'EOF'
-bionic|bionic/0001-pthread-patch.patch
-frameworks/av|frameworks/av/0001-Disable-vndk-for-omx.patch
-frameworks/av|frameworks/av/0002-mediatek-Port-AV-changes.patch
-frameworks/av|frameworks/av/0004-Add-support-of-YUV-color-profiles.patch
-frameworks/av|frameworks/av/0006-MTK-Omx-video-decoder-crop-info.patch
-frameworks/av|frameworks/av/0009-Fix-DpBlitStream-leak.patch
-frameworks/base|frameworks/base/0001-Hardware-bitmaps-support-workaround.patch
-frameworks/base|frameworks/base/0002-zygote-Add-ged-to-whitelisted-paths.patch
-frameworks/base|frameworks/base/0005-SystemUI-avoid-hardware-bitmaps-for-navigation-keys.patch
-frameworks/native|frameworks/native/0001-Add-support-of-YUV-color-profiles.patch
-frameworks/opt/net/wifi|frameworks/opt/net/wifi/0001-Passpoint-do-not-send-ANQP-for-WifiMetrics.patch
-hardware/interfaces|hardware/interfaces/0001-HWC2On1Adapter-Fix-fence-leak.patch
-hardware/interfaces|hardware/interfaces/0002-MediaTek-P-hw-interfaces.patch
-system/core|system/core/0001-libsuspend-readd-earlysuspend.patch
-system/core|system/core/0002-liblog-Add-__xlog_buf_printf.patch
-system/core|system/core/0003-libnetutils-add-MTK-bits-in-ifc_utils.c.patch
-vendor/lineage|vendor/lineage/0002-add-bromite-webview-overlay.patch
-EOF
+device/amazon/suez/patches/apply.sh
 ```
 
-Interpretation:
-
-```text
-APPLIED      patch is already in the actual source tree
-NOT_APPLIED  patch is absent and can be applied cleanly
-CONFLICT     patch is partially present, based on a different source revision, or depends on another patch
-```
-
-For an existing source tree, apply only the required `NOT_APPLIED` patches. Do not run the whole patch set just because the files exist.
+Because the script uses both `git apply --reverse --check` and `git apply --check`, it is safe to re-run on a source tree where some patches are already present. A `CONFLICT` still requires manual inspection; do not force-apply through it.
 
 ## Baseline patches for this MT8173 build
 
