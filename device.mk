@@ -139,8 +139,7 @@ PRODUCT_PACKAGES += \
     libshim_media \
     libshim_sensor \
     libshim_xlog \
-    libshim_camera \
-    libshim_audio
+    libshim_camera
 
 # Wifi
 PRODUCT_PACKAGES += \
